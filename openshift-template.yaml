@@ -45,14 +45,14 @@ objects:
           containers:
             - name: mysql
               # UID-agnostic image so it runs under OpenShift's restricted SCC.
-              image: registry.redhat.io/rhel9/mysql-80:latest
+              image: docker.io/library/mysql:8
               envFrom: [ { secretRef: { name: tc-db } } ]
               ports: [ { containerPort: 3306 } ]
               volumeMounts:
-                - { name: data, mountPath: /var/lib/mysql/data }
+                - { name: data, mountPath: /var/lib/mysql }
           volumes:
             - name: data
-              persistentVolumeClaim: { claimName: tc-db }
+              emptyDir: {}
   - apiVersion: v1
     kind: Service
     metadata: { name: tc-db }
@@ -70,12 +70,12 @@ objects:
       template:
         metadata: { labels: { app: tempconverter } }
         spec:
-          affinity:
-            podAntiAffinity:               # keep the 2 replicas on different nodes
-              requiredDuringSchedulingIgnoredDuringExecution:
-                - topologyKey: kubernetes.io/hostname
-                  labelSelector:
-                    matchLabels: { app: tempconverter }
+          # affinity:
+          #   podAntiAffinity:               # keep the 2 replicas on different nodes
+          #     requiredDuringSchedulingIgnoredDuringExecution:
+          #       - topologyKey: kubernetes.io/hostname
+          #         labelSelector:
+          #           matchLabels: { app: tempconverter }
           containers:
             - name: web
               image: ${IMAGE}

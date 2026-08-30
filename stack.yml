@@ -1,0 +1,51 @@
+# Docker Swarm stack (the simple-orchestrator template).
+#
+# Deploy from the manager node, after exporting the variables below:
+#     set -a; . ./.env; set +a
+#     docker stack deploy -c stack.yml tempconverter
+#
+# Requires the image to be pushed first (Swarm cannot build). SWARM_DB_NODE is the
+# hostname of the node that holds the database volume (e.g. node1).
+version: "3.8"
+
+services:
+  db:
+    image: docker.io/library/mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: tempdb
+      MYSQL_USER: tempuser
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks: [tcnet]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: ["node.hostname == ${SWARM_DB_NODE}"]   # pin DB to the node with the volume
+
+  app:
+    image: docker.io/${REGISTRY_USER}/tempconverter:dev
+    environment:
+      DB_USER: tempuser
+      DB_PASS: ${MYSQL_PASSWORD}
+      DB_HOST: db
+      DB_NAME: tempdb
+      STUDENT: ${STUDENT}
+      COLLEGE: ${COLLEGE}
+    networks: [tcnet]
+    ports:
+      - target: 5000
+        published: 80          # exposed to the outside world on port 80
+        mode: ingress          # routing mesh = built-in load balancing across nodes
+    deploy:
+      replicas: 2
+      placement:
+        max_replicas_per_node: 1   # anti-affinity: the 2 replicas cannot share a node
+
+networks:
+  tcnet:
+    driver: overlay
+
+volumes:
+  db_data:

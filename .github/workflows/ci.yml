@@ -1,0 +1,46 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: tempdb
+          MYSQL_USER: tempuser
+          MYSQL_PASSWORD: temppass
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s --health-timeout=3s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Unit tests
+        run: pytest -q tests/test_unit.py
+
+      - name: Integration tests
+        env:
+          DB_USER: tempuser
+          DB_PASS: temppass
+          DB_HOST: 127.0.0.1
+          DB_NAME: tempdb
+        run: pytest -q tests/test_integration.py
+
+      - name: Build and push image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | \
+            podman login docker.io -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+          podman build -t docker.io/${{ secrets.REGISTRY_USER }}/tempconverter:ci-${{ github.sha }} .
+          podman push docker.io/${{ secrets.REGISTRY_USER }}/tempconverter:ci-${{ github.sha }}

@@ -1,0 +1,36 @@
+# Local run:  podman-compose up --build -d   then browse http://localhost:8080
+# Values marked ${...} are read from a local .env file (copy .env.example to .env).
+services:
+  db:
+    image: docker.io/library/mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: tempdb
+      MYSQL_USER: tempuser            # non-root application user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql:Z       # :Z relabels the volume for SELinux (Fedora)
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  web:
+    image: docker.io/${REGISTRY_USER}/tempconverter:dev
+    build: .                           # allows:  podman-compose up --build
+    environment:
+      DB_USER: tempuser
+      DB_PASS: ${MYSQL_PASSWORD}
+      DB_HOST: db                      # the compose service name resolves on the pod network
+      DB_NAME: tempdb
+      STUDENT: ${STUDENT}
+      COLLEGE: ${COLLEGE}
+    ports:
+      - "8080:5000"
+    depends_on:
+      - db
+    restart: on-failure                # retries until the DB is ready
+
+volumes:
+  db_data:

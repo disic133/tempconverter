@@ -1,0 +1,104 @@
+# OpenShift Template (the complex-orchestrator template).
+#
+# Deploy:
+#   oc new-project tempconverter
+#   oc process -f openshift-template.yaml \
+#     -p STUDENT="Your Name" -p COLLEGE="Your College" \
+#     -p IMAGE="docker.io/<registry-user>/tempconverter:dev" \
+#     -p DB_PASSWORD="change-me" | oc apply -f -
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: tempconverter
+parameters:
+  - { name: STUDENT,     required: true }
+  - { name: COLLEGE,     required: true }
+  - { name: IMAGE,       required: true }
+  - { name: DB_PASSWORD, required: true }
+objects:
+  # --- credentials ---
+  - apiVersion: v1
+    kind: Secret
+    metadata: { name: tc-db }
+    stringData:
+      MYSQL_DATABASE: tempdb
+      MYSQL_USER: tempuser                # non-root application user
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+
+  # --- database ---
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata: { name: tc-db }
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources: { requests: { storage: 1Gi } }
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata: { name: tc-db }
+    spec:
+      replicas: 1                          # one database instance
+      selector: { matchLabels: { app: tc-db } }
+      template:
+        metadata: { labels: { app: tc-db } }
+        spec:
+          containers:
+            - name: mysql
+              # UID-agnostic image so it runs under OpenShift's restricted SCC.
+              image: registry.redhat.io/rhel9/mysql-80:latest
+              envFrom: [ { secretRef: { name: tc-db } } ]
+              ports: [ { containerPort: 3306 } ]
+              volumeMounts:
+                - { name: data, mountPath: /var/lib/mysql/data }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: tc-db }
+  - apiVersion: v1
+    kind: Service
+    metadata: { name: tc-db }
+    spec:
+      selector: { app: tc-db }
+      ports: [ { port: 3306, targetPort: 3306 } ]
+
+  # --- application ---
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata: { name: tempconverter }
+    spec:
+      replicas: 2                          # two application replicas
+      selector: { matchLabels: { app: tempconverter } }
+      template:
+        metadata: { labels: { app: tempconverter } }
+        spec:
+          affinity:
+            podAntiAffinity:               # keep the 2 replicas on different nodes
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels: { app: tempconverter }
+          containers:
+            - name: web
+              image: ${IMAGE}
+              ports: [ { containerPort: 5000 } ]
+              env:
+                - { name: DB_HOST, value: tc-db }
+                - { name: DB_NAME, value: tempdb }
+                - { name: DB_USER, value: tempuser }
+                - name: DB_PASS
+                  valueFrom: { secretKeyRef: { name: tc-db, key: MYSQL_PASSWORD } }
+                - { name: STUDENT, value: "${STUDENT}" }
+                - { name: COLLEGE, value: "${COLLEGE}" }
+  - apiVersion: v1
+    kind: Service
+    metadata: { name: tempconverter }
+    spec:
+      selector: { app: tempconverter }
+      ports: [ { port: 5000, targetPort: 5000 } ]
+
+  # --- expose to the outside world over port 80 ---
+  - apiVersion: route.openshift.io/v1
+    kind: Route
+    metadata: { name: tempconverter }
+    spec:
+      to: { kind: Service, name: tempconverter }
+      port: { targetPort: 5000 }           # the router serves it on 80/443

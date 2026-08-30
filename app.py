@@ -5,6 +5,7 @@ from wtforms import StringField, SubmitField
 from wtforms.validators import InputRequired
 from datetime import datetime
 from os import environ
+import time
 
 app = Flask(__name__)
 # Secret key for Flask sessions/CSRF. Override with the SECRET_KEY env var in production.
@@ -40,16 +41,17 @@ class Temperature(db.Model):
     user_agent = db.Column(db.String(200), nullable=False)
 
 
-def init_db():
-    """Create tables at start-up, tolerating a database that is not ready yet.
-    Combined with the container's restart-on-failure policy this avoids the
-    crash-on-boot problem when the DB comes up slightly after the app."""
-    try:
-        with app.app_context():
-            db.create_all()
-    except Exception as exc:  # pragma: no cover - depends on external DB timing
-        app.logger.warning("Database not ready during start-up: %s", exc)
-
+def init_db(retries=30, delay=2):
+    """Create tables, waiting for the database to become reachable at start-up."""
+    for attempt in range(1, retries + 1):
+        try:
+            with app.app_context():
+                db.create_all()
+            return
+        except Exception as exc:
+            app.logger.warning("DB not ready (attempt %s/%s): %s", attempt, retries, exc)
+            time.sleep(delay)
+    raise RuntimeError("Database not reachable after %s attempts" % retries)
 
 init_db()
 

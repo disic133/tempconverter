@@ -26,11 +26,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Get app.py
-        run: cp app.py tests/app.py
-
       - name: Unit tests
-        run: python3 -m pytest
+        run: python3 -m pytest tests/test_unit.py
 
       - name: Integration tests
         env:
@@ -38,7 +35,7 @@ jobs:
           DB_PASS: temppass
           DB_HOST: 127.0.0.1
           DB_NAME: tempdb
-        run: pytest -q tests/test_integration.py
+        run: python3 -m pytest tests/test_integration.py
 
       - name: Build and push image
         if: github.ref == 'refs/heads/main'

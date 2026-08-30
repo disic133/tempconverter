@@ -30,7 +30,7 @@ jobs:
         run: cp app.py tests/app.py
 
       - name: Unit tests
-        run: pytest -q tests/test_unit.py
+        run: python3 -m pytest
 
       - name: Integration tests
         env:

@@ -53,8 +53,6 @@ def init_db(retries=30, delay=2):
             time.sleep(delay)
     raise RuntimeError("Database not reachable after %s attempts" % retries)
 
-init_db()
-
 
 class TemperatureForm(FlaskForm):
     celsius = StringField('Celsius', validators=[InputRequired()])
@@ -84,4 +82,5 @@ def index():
 
 
 if __name__ == '__main__':
+    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)

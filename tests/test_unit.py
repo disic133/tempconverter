@@ -1,4 +1,4 @@
-"""Unit tests for the pure conversion logic. These need no database."""
+sys.path.append('../')
 from app import celsius_to_fahrenheit
 
 
